@@ -1,4 +1,4 @@
-"""Entry point for running the LMMS MCP server."""
+"""Entry point: ``python -m lmms_mcp``."""
 
 from .server import main
 

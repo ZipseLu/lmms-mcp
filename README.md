@@ -1,28 +1,26 @@
 # LMMS MCP Server
 
-An MCP (Model Context Protocol) server for [LMMS](https://lmms.io/) - the free, open-source digital audio workstation. Lets AI agents create, modify, and save LMMS music projects programmatically.
+An [MCP](https://modelcontextprotocol.io) server that lets AI assistants compose, arrange and mix songs for [LMMS](https://lmms.io), the free open-source DAW.
 
-## Features
+The server writes regular LMMS project files (`.mmpz` / `.mmp`). You open the result in LMMS, or let the server render it to audio. LMMS does not have to be running while the song is built.
 
-- **Create & save** LMMS projects (`.mmpz` compressed, `.mmp` XML)
-- **Add tracks**: Instrument, Sample, Pattern (Beat/Bassline), Automation
-- **Add notes** with MIDI key, position, velocity, and panning
-- **Effects**: 18 built-in effects on tracks and mixer channels (delay, reverb, EQ, compressor...)
-- **ZynAddSubFX presets**: Load any of ~950 factory instruments (.xiz), tune parameters
-- **Arrangement**: Place patterns, BB clips and audio clips on the song timeline
-- **Automation**: Tempo ramps, volume swells, panning curves - linked to real LMMS models
-- **Mixer control**: Create channels, set volume, name channels
-- **Song settings**: Tempo (BPM), time signature, master volume/pitch
-- **Musical utilities**: Note name conversion, scale generation, tick/bar conversion
-- **Full project inspection**: Read tracks, patterns, notes, mixer channels
+## What it can do
+
+- **Songs from scratch** – tempo, time signature, tracks, notes, arrangement, mix
+- **Musical input** – note names (`C4`, `F#3`), a compact melody notation (`"A1:e A1 r A2 A1:q"`), chord symbols (`"Am F C G"`), step-sequencer strings (`"x...x...x...x..."`)
+- **Drums** – drum kits from the LMMS factory samples in the Beat/Bassline (pattern) editor, patterns and variations
+- **Instruments** – all built-in synths, the sample player, SoundFonts, LMMS presets (`.xpf`) and ZynAddSubFX patches (`.xiz`)
+- **Sound shaping** – envelopes, LFOs, filters, arpeggiator, chord stacking
+- **Arrangement** – repeat or clear whole sections, audio clips on sample tracks, MIDI file import
+- **Mixing** – mixer channels, sends, built-in effects with parameters
+- **Automation** – tempo, volumes, pan, filter cutoff, any instrument or effect parameter; LFO controllers
+- **Existing projects** – opens and edits projects saved by LMMS 1.0 – 1.3 without losing data it does not understand
+- **LMMS 1.2 and 1.3** – writes either file format (see [File format](#file-format))
+- **Safety net** – undo, validation ("this track will be silent because…"), failed calls never leave a half-edited project
 
 ## Installation
 
-```bash
-pip install lmms-mcp
-```
-
-Or from source:
+Requires Python 3.10+.
 
 ```bash
 git clone https://github.com/TypeWolf/lmms-mcp.git
@@ -30,34 +28,9 @@ cd lmms-mcp
 pip install -e .
 ```
 
-### Requirements
+## Configuration
 
-- Python 3.10+
-- An MCP host (opencode, Claude Desktop, Cursor, etc.)
-
-## Quick Start
-
-### With opencode
-
-Add to your `opencode.json`:
-
-```json
-{
-  "mcp": {
-    "lmms": {
-      "type": "local",
-      "command": ["python", "-m", "lmms_mcp"],
-      "environment": {
-        "LMMS_PROJECTS_DIR": "/path/to/your/lmms/projects"
-      }
-    }
-  }
-}
-```
-
-### With Claude Desktop
-
-Add to `claude_desktop_config.json`:
+### Claude Desktop (`claude_desktop_config.json`)
 
 ```json
 {
@@ -66,292 +39,154 @@ Add to `claude_desktop_config.json`:
       "command": "python",
       "args": ["-m", "lmms_mcp"],
       "env": {
-        "LMMS_PROJECTS_DIR": "/path/to/your/lmms/projects"
+        "LMMS_PROJECTS_DIR": "C:\\Users\\me\\Documents\\lmms\\projects"
       }
     }
   }
 }
 ```
 
-### Run directly
+### opencode (`opencode.json`)
 
-```bash
-python -m lmms_mcp
+```json
+{
+  "mcp": {
+    "lmms": {
+      "type": "local",
+      "command": ["python", "-m", "lmms_mcp"],
+      "environment": {
+        "LMMS_PROJECTS_DIR": "C:\\Users\\me\\Documents\\lmms\\projects"
+      }
+    }
+  }
+}
 ```
+
+### Environment variables
+
+All are optional – an LMMS installed in the default location is found automatically.
+
+| Variable | Purpose |
+|----------|---------|
+| `LMMS_PROJECTS_DIR` | Folder for relative project paths. Default: `~/Documents/lmms/projects` |
+| `LMMS_EXECUTABLE` | Path to `lmms` / `lmms.exe` (for rendering and "open in LMMS") |
+| `LMMS_DATA_DIR` | LMMS data folder containing `samples/` and `presets/` (enables the sample and preset browser). Normally `<LMMS install dir>/data`; the `data` folder of an LMMS source checkout works too |
+| `LMMS_TARGET_VERSION` | `1.2` or `1.3` – file format of new projects. Default: taken from the installed LMMS |
+| `LMMS_USER_DIR` | LMMS working directory with your own `samples/` and `presets/`. Default: `~/Documents/lmms` |
+| `LMMS_PLUGIN_DIR` | Folder containing the LMMS plugin libraries if they are not found automatically (AppImage or custom install) |
+
+Ask the assistant to call `get_environment` to see what was detected.
+
+### Plugin availability
+
+The server reads the plugin libraries of the installed LMMS when it can find them. Availability has three states: detected, missing from a nonempty inventory, and unknown. An empty or unreadable inventory, as well as a plugin that is only assumed to be statically linked, is not verification.
+
+`get_environment` reports `plugin_inventory_status`, `instruments_verified_available`, `effects_verified_available`, `instruments_unverified` and `effects_unverified`. The verified fields only mean that a matching plugin file was found; they do not prove that LMMS loads the plugin or produces audio. Offline composition remains supported: `add_instrument_track` and `add_effect` add a warning when availability cannot be checked or the plugin is missing from a nonempty inventory.
+
+Set `LMMS_PLUGIN_DIR` when the plugin folder is not in a standard location (for example an AppImage or a custom install). Linux/AppImage discovery remains best-effort.
+
+## Example
+
+> "Make a 16-bar deep house loop in A minor at 122 BPM and open it in LMMS."
+
+The assistant will typically run something like:
+
+```text
+new_project(name="deep-house", tempo=122)
+add_drum_kit(kit="electro")
+set_beat("Main", {"Kick": "x...x...x...x...", "Clap": "....x.......x...",
+                  "Hihat": "..x...x...x...x.", "Openhat": "..............x."})
+arrange_pattern("Main", bar=1, length_bars=16)
+add_instrument_track("Bass", instrument="lb302", params={"vcf_cut": 0.4}, new_mixer_channel=True)
+add_notes("Bass", sequence="A1:e r A1 r:q A1:e C2 r G1:q.", bar=1)
+add_instrument_track("Keys", preset="Rhodes")
+add_chords("Keys", "Am7 Fmaj7 Cmaj7 G", bar=1, rhythm="x..x..x...x.....")
+copy_section(from_bar=1, length_bars=4, to_bar=5, times=3, tracks=["Bass", "Keys"])
+add_effect("reverbsc", track="Keys", wet=0.25)
+add_automation("cutoff", track="Keys", points=[[1, 600], [9, 9000]])
+save_project()
+open_in_lmms()
+```
+
+## Conventions
+
+| Thing | Convention |
+|-------|------------|
+| Bars | 1-based position on the song timeline (bar 1 = start); fractions allowed |
+| Note start / length | Beats (quarter notes); start counts from the given bar, 0-based |
+| Pitch | `C4` = MIDI 60 = middle C (same labels as the LMMS piano roll), or MIDI numbers |
+| Velocity, volume | 0–200, 100 = normal (LMMS native) |
+| Pan | −100 (left) … 100 (right) |
+| Tracks | Referenced by name or index; mixer channels by number (0 = master) |
+
+**Sequence notation** (`add_notes(sequence=…)`): tokens are played one after another.
+`C4:1` note for one beat · `r:0.5` rest · `[C4 E4 G4]:2` chord · `E4` reuses the previous duration · `q.`/`e`/`s`/`h`/`w` letter durations · `C4:1@120` velocity · `|` ignored.
+
+**Step strings** (`set_beat`): one character per sixteenth – `x` hit, `X` accent, `o` ghost note, `.` rest.
 
 ## Tools
 
-### Project Management
+| Area | Tools |
+|------|-------|
+| Project | `new_project` `open_project` `save_project` `get_project` `set_song` `undo` `validate_project` |
+| Tracks | `add_instrument_track` `set_instrument` `update_track` `get_track` `duplicate_track` `move_track` `remove_track` |
+| Sound | `set_envelope` `set_filter` `set_arpeggiator` `set_chord_stacking` |
+| Notes | `add_notes` `add_chords` `get_notes` `remove_notes` `transpose_notes` |
+| Drums | `add_drum_kit` `add_beat_instrument` `set_beat` `arrange_pattern` `duplicate_pattern` |
+| Arrangement | `copy_section` `clear_section` `add_sample_track` `add_sample_clip` `import_midi` |
+| Mixer / FX | `add_mixer_channel` `update_mixer_channel` `add_effect` `update_effect` |
+| Automation | `add_automation` `add_lfo` |
+| Library | `list_instruments` `list_effects` `describe_plugin` `list_presets` `list_samples` `music_theory` |
+| LMMS | `get_environment` `render_project` `open_in_lmms` |
 
-| Tool | Description |
-|------|-------------|
-| `create_project` | Create a new empty LMMS project |
-| `load_project` | Load an existing `.mmpz` or `.mmp` file |
-| `save_project` | Save the current project |
-| `get_project_info` | Get project overview (tempo, tracks, mixer) |
-| `get_project_xml` | Get raw XML of the project |
+Resources: `lmms://guide` (workflow and sound-design tips), `lmms://project` (current project).
+Prompt: `compose_song(style, tempo, key, bars)`.
 
-### Track Operations
+## File format
 
-| Tool | Description |
-|------|-------------|
-| `add_instrument_track` | Add a synthesizer/sampler track |
-| `add_sample_track` | Add an audio sample track |
-| `add_automation_track` | Add a parameter automation track |
-| `add_pattern_track` | Add a beat/bassline pattern track |
-| `remove_track` | Remove a track by index |
-| `get_track` | Get detailed track information |
-| `list_tracks` | List all tracks with summary |
-| `set_track_volume` | Set track volume (0-200) |
-| `set_track_panning` | Set track panning (-100 to +100) |
-| `mute_track` | Mute/unmute a track |
-| `solo_track` | Solo/unsolo a track |
+LMMS changed its project format between 1.2 and 1.3 (element names, and note numbers shifted by an octave). The server handles both:
 
-### Notes & Patterns
+- **`1.2`** – the LMMS 1.2.x layout. LMMS 1.3 upgrades such files automatically when loading, so this is the safe choice and the default when no LMMS installation is detected.
+- **`1.3`** – the current layout of LMMS 1.3 (alpha / nightly builds).
 
-| Tool | Description |
-|------|-------------|
-| `add_note` | Add a note by MIDI key number |
-| `add_note_by_name` | Add a note by name (e.g. "C4", "A#3") |
-| `add_notes_batch` | Add multiple notes at once |
+When an existing project is opened, it is kept in whatever version it was saved with. Pitches are always given as real MIDI notes; the server converts them.
 
-### Mixer
+Effects and instruments that only exist in 1.3 (`compressor`, `lomm`, `dispersion`, `slicert`, …) are flagged when used in a 1.2 project.
 
-| Tool | Description |
-|------|-------------|
-| `add_mixer_channel` | Create a new mixer channel |
-| `get_mixer_channels` | List all mixer channels |
-| `set_mixer_channel_volume` | Set channel volume |
-| `set_mixer_channel_name` | Rename a channel |
+## Limitations
 
-### Song Settings
-
-| Tool | Description |
-|------|-------------|
-| `set_tempo` | Set BPM (10-999) |
-| `set_time_signature` | Set time signature (e.g. 4/4, 3/4) |
-| `set_master_volume` | Set master volume (0-200) |
-| `set_master_pitch` | Set master pitch (-12 to +12 semitones) |
-
-### Effects (FX Chain)
-
-| Tool | Description |
-|------|-------------|
-| `add_effect` | Add a built-in effect to a track or mixer channel |
-| `remove_effect` | Remove an effect by name or chain position |
-| `toggle_effect` | Enable/bypass an effect without removing it |
-| `get_effect_chain` | List all effects on a track or mixer channel |
-
-### ZynAddSubFX Presets & Parameters
-
-| Tool | Description |
-|------|-------------|
-| `list_zyn_presets` | Browse ~950 factory presets (.xiz) by category |
-| `load_zyn_preset` | Load a preset into a zynaddsubfx track |
-| `set_zyn_params` | Set portamento, filter, FM gain, resonance etc. |
-
-### Arrangement (Song Editor Timeline)
-
-| Tool | Description |
-|------|-------------|
-| `place_pattern` | Place an empty pattern clip on an instrument track |
-| `place_bb_clip` | Trigger a BB pattern at a given time |
-| `place_sample_clip` | Place an audio file clip on a sample track |
-| `assign_sample_file` | Assign/replace the audio file on sample clips |
-| `move_clip` | Move a clip to a new position |
-| `delete_clip` | Delete a clip at a position |
-| `get_arrangement` | Full timeline overview of all clips |
-
-### Automation
-
-| Tool | Description |
-|------|-------------|
-| `add_automation` | Create automation curves for tempo, master volume/pitch, track volume/panning and mixer channel volume |
-
-### LMMS App Integration
-
-| Tool | Description |
-|------|-------------|
-| `get_lmms_info` | Detect installed LMMS version + available plugins |
-| `render_project` | Export to WAV/FLAC/OGG/MP3 via headless LMMS render |
-
-The server reads and writes project files directly - it never launches
-the LMMS GUI. The installed LMMS is only used for: preset discovery,
-plugin availability checks (warns about plugins your version lacks,
-e.g. SlicerT/Xpressive require LMMS 1.3+) and audio rendering.
-
-### Custom Plugins & VST
-
-| Tool | Description |
-|------|-------------|
-| `list_available_plugins` | Dynamically list ALL installed plugins (incl. custom ones) |
-| `scan_vst_directory` | Find VST .dll files in a folder |
-| `add_vst_track` | Add a track hosting a VST plugin (Vestige) |
-
-Custom LMMS plugins dropped into the plugins folder are detected
-automatically and can be used directly by name - no server update needed.
-
-### Utilities
-
-| Tool | Description |
-|------|-------------|
-| `note_name_to_key` | Convert note name to MIDI number |
-| `key_to_note_name` | Convert MIDI number to note name |
-| `bars_to_ticks_converter` | Convert bars to ticks |
-| `ticks_to_bars_converter` | Convert ticks to bars |
-| `generate_scale` | Generate a musical scale |
-
-## Resources
-
-| URI | Description |
-|-----|-------------|
-| `lmms://project/info` | Current project information |
-| `lmms://project/tracks` | All tracks in the project |
-| `lmms://project/mixer` | All mixer channels |
-| `lmms://project/xml` | Raw project XML |
-| `lmms://reference/instruments` | Available LMMS instruments |
-| `lmms://reference/effects` | Available LMMS effects |
-| `lmms://reference/note_names` | MIDI note name mapping |
-| `lmms://reference/scales` | Available musical scales |
-
-## Prompts
-
-| Name | Description |
-|------|-------------|
-| `create_basic_song` | Create a song structure with drums, bass, melody |
-| `add_drum_pattern` | Generate a drum pattern (four-on-the-floor, breakbeat, etc.) |
-| `create_melody` | Generate a melody in a given scale |
-| `mix_and_arrange` | Mix and arrange the current project |
-| `export_project` | Export/save the project |
-
-## LMMS Concepts
-
-| Concept | Value |
-|---------|-------|
-| Ticks per bar | 192 (in 4/4 time) |
-| Default tempo | 140 BPM |
-| Note 60 | C4 (middle C) |
-| Note 69 | A4 (440 Hz) |
-| Volume range | 0-200 (100 = normal) |
-| Panning range | -100 (left) to +100 (right) |
-| Track type 0 | Instrument |
-| Track type 1 | Pattern (Beat/Bassline) |
-| Track type 2 | Sample |
-| Track type 5 | Automation |
-
-## Available Instruments
-
-All built-in LMMS instruments (verified against LMMS source). LMMS has no
-plugin download mechanism - only these can be used:
-
-| Plugin ID | Name |
-|-----------|------|
-| `tripleoscillator` | Three-oscillator subtractive synth (default) |
-| `kicker` | Kick drum synth |
-| `audiofileprocessor` | Audio file player/sampler |
-| `organic` | Additive organ synth |
-| `malletsstk` | Physical modeling mallets (STK) |
-| `lb302` | TB-303 style acid bass |
-| `monstro` | Powerful 3-oscillator polyphonic synth |
-| `freeboy` | Game Boy sound chip emulator |
-| `nes` | NES 8-bit sound chip emulator |
-| `sid` | Commodore 64 SID chip emulator |
-| `sfxr` | Retro sound effect generator |
-| `opulenz` | OPL3 FM synthesizer |
-| `watsyn` | 4-oscillator wavetable-style synth |
-| `xpressive` | Expressive mono lead synth |
-| `zynaddsubfx` | ZynAddSubFX powerful feature-rich synth |
-| `sf2player` | SoundFont (.sf2) sample player |
-| `vibedstrings` | Vibrating string physical model |
-| `bitinvader` | Bit-crushed wavetable synth |
-| `patman` | GUS patch sampler |
-| `gigplayer` | GIG sample library player |
-| `slicert` | Beat slicer for audio loops |
-| `vestige` | VST plugin host (Windows only) |
-
-## Available Effects
-
-Built-in LMMS effects for `add_effect`: `amplifier`, `bassbooster`,
-`bitcrush`, `compressor`, `crossovereq`, `delay`, `dispersion`,
-`dualfilter`, `dynamicsprocessor`, `eq`, `flanger`, `frequencyshifter`,
-`multitapecho`, `reverbsc`, `slewdistortion`, `stereoenhancer`,
-`stereomatrix`, `waveshaper`.
-
-Typical chains:
-- Lead synth: `delay` -> `reverbsc`
-- Vocals: `eq` -> `compressor` -> `reverbsc`
-- Master bus: `eq` -> `compressor` -> `stereoenhancer`
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LMMS_PROJECTS_DIR` | `~/Desktop/Media/lmms/AI-Projects` | Default directory for saving projects |
-| `LMMS_PRESETS_DIR` | auto-detected | Path to ZynAddSubFX presets folder (`data/presets/ZynAddSubFX`) |
-| `LMMS_EXECUTABLE` | auto-detected | Path to `lmms.exe` (for version/plugin checks and rendering) |
-
-## Configuration
-
-### opencode.json
-
-```json
-{
-  "mcp": {
-    "lmms": {
-      "type": "local",
-      "command": ["python", "-m", "lmms_mcp"],
-      "cwd": ".",
-      "enabled": true,
-      "environment": {
-        "LMMS_PROJECTS_DIR": "C:\\Users\\you\\Music\\LMMS\\Projects"
-      }
-    }
-  }
-}
-```
-
-### claude_desktop_config.json
-
-```json
-{
-  "mcpServers": {
-    "lmms": {
-      "command": "python",
-      "args": ["-m", "lmms_mcp"],
-      "env": {
-        "LMMS_PROJECTS_DIR": "/home/you/music/lmms/projects"
-      }
-    }
-  }
-}
-```
+- LADSPA, LV2 and VST effects of existing projects are preserved but cannot be created (only the built-in effects can).
+- VST instruments (`vestige`) can be referenced by plugin path but not configured.
+- `sfxr`, `organic`, `monstro`, `opulenz`, `nes`, `freeboy` and `sid` start with the plugin's default sound; `watsyn`, `vibedstrings` and `xpressive` need a preset.
+- Audio clip lengths are detected for wav, ogg and flac; pass `length_beats` for other formats.
+- Plugin availability is based on plugin files found in the installed LMMS; file presence does not prove loading or audio output.
 
 ## Development
 
 ```bash
-# Clone and install
-git clone https://github.com/TypeWolf/lmms-mcp.git
-cd lmms-mcp
 pip install -e ".[dev]"
-
-# Run tests
 pytest
 
-# Run in development mode
-mcp dev src/lmms_mcp/server.py
+# plugin availability regression tests (no LMMS installation required)
+pytest tests/test_plugin_availability.py
+
+# include the tests that load every factory preset and round-trip the LMMS demo songs
+LMMS_DATA_DIR=/path/to/lmms/data pytest
 ```
+
+Layout:
+
+| Module | Content |
+|--------|---------|
+| `server.py` | MCP tools, resources, prompt |
+| `project.py` | The project model – all editing operations on the LMMS XML |
+| `dialect.py` | Differences between LMMS file format versions |
+| `catalog.py` | Instruments, effects, parameters, drum kits |
+| `theory.py` | Pitches, scales, chords, note / step notation |
+| `lmms_env.py` | Finding LMMS, samples, presets; rendering |
+| `fileio.py` | Reading / writing `.mmp` and `.mmpz` |
+| `midi_import.py` | Standard MIDI file reader |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
-
-## Links
-
-- [LMMS](https://lmms.io/) - The DAW this server controls
-- [MCP Protocol](https://modelcontextprotocol.io/) - Model Context Protocol specification
-- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) - Official Python SDK
-- [opencode](https://opencode.ai/) - AI coding assistant with MCP support
+MIT – see [LICENSE](LICENSE).
