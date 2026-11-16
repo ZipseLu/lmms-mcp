@@ -213,7 +213,12 @@ def _configure_instrument(p: Project, track, *, instrument=None, preset=None, sa
             p.set_instrument_params(track, {key: int(value)})
     if params:
         warnings += p.set_instrument_params(track, params)
-    info["instrument"] = p.instrument_name(track)
+    plugin = p.instrument_name(track)
+    if plugin:
+        available, reason = lmms_env.get_plugin_availability(plugin)
+        if available is not True:
+            warnings.append(reason)
+    info["instrument"] = plugin
     if warnings:
         info["warnings"] = warnings
     return info
@@ -1066,6 +1071,9 @@ def add_effect(effect: str, track: int | str | None = None, mixer_channel: int |
     result = {"effect": effect.lower(), "index": index, "chain": p.describe_chain(chain)}
     if warnings:
         result["warnings"] = warnings
+    available, reason = lmms_env.get_plugin_availability(effect.strip().lower())
+    if available is not True:
+        result.setdefault("warnings", []).append(reason)
     return result
 
 
@@ -1172,7 +1180,11 @@ def add_lfo(parameter: str, track: int | str | None = None, mixer_channel: int |
 
 @tool(title="List instruments")
 def list_instruments() -> dict:
-    """All instrument plugins with a short description and typical uses."""
+    """All known instrument plugins with a short description and typical uses.
+
+    This is the catalog, not proof that the plugin is installed. get_environment
+    reports which plugins were detected in the installed LMMS.
+    """
     return {"instruments": {
         name: {"description": spec["description"], "good_for": spec["use"],
                **({"has_presets": True} if spec.get("preset_dir") else {}),
@@ -1182,7 +1194,11 @@ def list_instruments() -> dict:
 
 @tool(title="List effects")
 def list_effects() -> dict:
-    """All built-in effects with a short description."""
+    """All known built-in effects with a short description.
+
+    This is the catalog, not proof that the plugin is installed. get_environment
+    reports which effects were detected in the installed LMMS.
+    """
     return {"effects": {name: spec["description"] for name, spec in catalog.EFFECTS.items()}}
 
 
@@ -1308,8 +1324,8 @@ def music_theory(scale: str | None = None, chord: str | None = None, octave: int
 
 @tool(title="Environment")
 def get_environment() -> dict:
-    """Where things are on this machine: LMMS executable and version, factory data folder,
-    projects folder, and the project files found there."""
+    """Where things are on this machine: LMMS executable and version, plugin inventory,
+    factory data folder, projects folder, and the project files found there."""
     folder = lmms_env.projects_dir()
     files = []
     if folder.is_dir():
@@ -1317,6 +1333,22 @@ def get_environment() -> dict:
         found.sort(key=lambda f: f.stat().st_mtime, reverse=True)
         files = [f.relative_to(folder).as_posix() for f in found[:60]]
     exe, data = lmms_env.find_executable(), lmms_env.data_dir()
+    try:
+        installed = lmms_env.get_installed_plugins()
+        inventory_warning = None
+    except OSError:
+        installed = set()
+        inventory_warning = "Plugin inventory could not be read - cannot verify"
+    if not installed and inventory_warning is None:
+        inventory_warning = "Plugin inventory unavailable or empty - cannot verify"
+    inst_states = {
+        name: lmms_env.get_plugin_availability(name, installed_plugins=installed)[0]
+        for name in catalog.INSTRUMENTS
+    }
+    eff_states = {
+        name: lmms_env.get_plugin_availability(name, installed_plugins=installed)[0]
+        for name in catalog.EFFECTS
+    }
     info = {
         "server_version": __version__,
         "lmms_executable": str(exe) if exe else None,
@@ -1325,6 +1357,15 @@ def get_environment() -> dict:
         "lmms_data_dir": str(data) if data else None,
         "projects_dir": str(folder),
         "project_files": files,
+        "plugin_inventory_status": "available" if installed else "unknown",
+        "plugin_inventory_warning": inventory_warning,
+        "plugin_count": len(installed),
+        "instruments_verified_available": [n for n, state in inst_states.items() if state is True],
+        "effects_verified_available": [n for n, state in eff_states.items() if state is True],
+        "instruments_unverified": [n for n, state in inst_states.items() if state is None],
+        "effects_unverified": [n for n, state in eff_states.items() if state is None],
+        "all_installed_plugins": sorted(installed),
+        "verification_scope": "Plugin file presence, not load or audio validation",
     }
     hints = []
     if exe is None:
@@ -1332,6 +1373,9 @@ def get_environment() -> dict:
     if data is None:
         hints.append("Factory data not found: set LMMS_DATA_DIR (folder containing 'samples' and "
                      "'presets') to enable list_presets / list_samples.")
+    if not installed:
+        hints.append("Plugin folder not found or empty: set LMMS_PLUGIN_DIR to the folder "
+                     "containing LMMS' plugin libraries if it is installed elsewhere.")
     if hints:
         info["hints"] = hints
     return info

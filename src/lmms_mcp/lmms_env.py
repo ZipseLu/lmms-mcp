@@ -130,6 +130,127 @@ def user_dir() -> Path | None:
 
 
 # ---------------------------------------------------------------------------
+# plugins
+# ---------------------------------------------------------------------------
+
+PLUGIN_EXTENSIONS = {".dll", ".so", ".dylib"}
+
+# Plugin files that are known by another name in some LMMS builds.
+PLUGIN_ALIASES = {
+    "nes": {"nes", "papu", "nescaline"},
+    "papu": {"nes", "papu", "nescaline"},
+    "opulenz": {"opulenz", "opl2"},
+    "opl2": {"opulenz", "opl2"},
+    "sf2player": {"sf2player", "fluidsynth"},
+    "vibedstrings": {"vibedstrings", "vibed"},
+    "malletsstk": {"malletsstk", "stk"},
+}
+
+# Some official builds link these into the main binary instead of a plugin file.
+STATIC_PLUGINS = {"freeboy"}
+
+
+def plugin_dirs() -> tuple[Path, ...]:
+    """Folders searched for LMMS plugin libraries.
+
+    ``LMMS_PLUGIN_DIR`` overrides the search (useful for AppImages and custom
+    installs). Otherwise the folders are derived from the executable plus the
+    usual Linux/macOS locations.
+    """
+    configured = _env_path("LMMS_PLUGIN_DIR")
+    if configured:
+        return (configured,)
+    candidates: list[Path] = []
+    exe = find_executable()
+    if exe:
+        base = exe.resolve().parent
+        candidates += [
+            base / "plugins",
+            base.parent / "lib" / "lmms",
+            base.parent / "lib64" / "lmms",
+            base.parent / "Resources" / "plugins",  # macOS app bundle
+            base.parent / "PlugIns",  # some macOS builds
+        ]
+    candidates += [
+        Path("/usr/lib/lmms"),
+        Path("/usr/lib64/lmms"),
+        Path("/usr/local/lib/lmms"),
+        Path("/usr/local/lib64/lmms"),
+        Path("/Applications/LMMS.app/Contents/Resources/plugins"),
+    ]
+    return tuple(dict.fromkeys(candidates))
+
+
+def get_installed_plugins() -> set[str]:
+    """Names of the plugin libraries found in the LMMS plugin folders.
+
+    A missing folder or an empty folder returns an empty set; callers must
+    treat that as "unknown", not as proof that a plugin is absent. An existing
+    folder that cannot be read raises ``OSError``.
+    """
+    found: set[str] = set()
+    for folder in plugin_dirs():
+        if not folder.is_dir():
+            continue
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if not entry.is_file() or Path(entry.name).suffix.lower() not in PLUGIN_EXTENSIONS:
+                    continue
+                name = Path(entry.name).stem.lower().removeprefix("lib")
+                if name:
+                    found.add(name)
+    return found
+
+
+def get_plugin_availability(
+    plugin_name: str,
+    *,
+    installed_plugins: set[str] | None = None,
+) -> tuple[bool | None, str]:
+    """Report whether a plugin file was detected, missing, or cannot be checked.
+
+    ``True`` means a matching plugin file exists, not that LMMS can load it or
+    produce audio. ``False`` means the plugin is absent from a nonempty
+    inventory. ``None`` means the inventory is empty, unreadable, or the plugin
+    may be statically linked - none of those can verify availability.
+
+    Pass ``installed_plugins`` to reuse one inventory snapshot for several
+    checks.
+    """
+    name = plugin_name.strip().lower()
+    if installed_plugins is None:
+        try:
+            installed = get_installed_plugins()
+        except OSError:
+            return None, "Plugin inventory could not be read - cannot verify"
+    else:
+        installed = set(installed_plugins)
+    if name in installed:
+        return True, "installed"
+    if PLUGIN_ALIASES.get(name, {name}) & installed:
+        return True, "installed (alias)"
+    if name in STATIC_PLUGINS:
+        return None, f"'{name}' may be built into LMMS on some builds - cannot verify"
+    if not installed:
+        return None, "Plugin inventory unavailable or empty - cannot verify"
+    return False, (
+        f"'{plugin_name}' is not included in your installed LMMS "
+        f"(found {len(installed)} plugins). It may require a newer LMMS version."
+    )
+
+
+def check_plugin_available(plugin_name: str) -> tuple[bool, str]:
+    """Permissive boolean wrapper for offline callers.
+
+    Unknown availability remains allowed for backward compatibility. This is
+    not verification; use :func:`get_plugin_availability` to distinguish
+    unknown from missing.
+    """
+    available, reason = get_plugin_availability(plugin_name)
+    return available is not False, reason
+
+
+# ---------------------------------------------------------------------------
 # samples
 # ---------------------------------------------------------------------------
 

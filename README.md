@@ -73,8 +73,17 @@ All are optional – an LMMS installed in the default location is found automati
 | `LMMS_DATA_DIR` | LMMS data folder containing `samples/` and `presets/` (enables the sample and preset browser). Normally `<LMMS install dir>/data`; the `data` folder of an LMMS source checkout works too |
 | `LMMS_TARGET_VERSION` | `1.2` or `1.3` – file format of new projects. Default: taken from the installed LMMS |
 | `LMMS_USER_DIR` | LMMS working directory with your own `samples/` and `presets/`. Default: `~/Documents/lmms` |
+| `LMMS_PLUGIN_DIR` | Folder containing the LMMS plugin libraries if they are not found automatically (AppImage or custom install) |
 
 Ask the assistant to call `get_environment` to see what was detected.
+
+### Plugin availability
+
+The server reads the plugin libraries of the installed LMMS when it can find them. Availability has three states: detected, missing from a nonempty inventory, and unknown. An empty or unreadable inventory, as well as a plugin that is only assumed to be statically linked, is not verification.
+
+`get_environment` reports `plugin_inventory_status`, `instruments_verified_available`, `effects_verified_available`, `instruments_unverified` and `effects_unverified`. The verified fields only mean that a matching plugin file was found; they do not prove that LMMS loads the plugin or produces audio. Offline composition remains supported: `add_instrument_track` and `add_effect` add a warning when availability cannot be checked or the plugin is missing from a nonempty inventory.
+
+Set `LMMS_PLUGIN_DIR` when the plugin folder is not in a standard location (for example an AppImage or a custom install). Linux/AppImage discovery remains best-effort.
 
 ## Example
 
@@ -150,12 +159,16 @@ Effects and instruments that only exist in 1.3 (`compressor`, `lomm`, `dispersio
 - VST instruments (`vestige`) can be referenced by plugin path but not configured.
 - `sfxr`, `organic`, `monstro`, `opulenz`, `nes`, `freeboy` and `sid` start with the plugin's default sound; `watsyn`, `vibedstrings` and `xpressive` need a preset.
 - Audio clip lengths are detected for wav, ogg and flac; pass `length_beats` for other formats.
+- Plugin availability is based on plugin files found in the installed LMMS; file presence does not prove loading or audio output.
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
 pytest
+
+# plugin availability regression tests (no LMMS installation required)
+pytest tests/test_plugin_availability.py
 
 # include the tests that load every factory preset and round-trip the LMMS demo songs
 LMMS_DATA_DIR=/path/to/lmms/data pytest
