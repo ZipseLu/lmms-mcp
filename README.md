@@ -174,6 +174,28 @@ pytest tests/test_plugin_availability.py
 LMMS_DATA_DIR=/path/to/lmms/data pytest
 ```
 
+An optional integration test for MCP SDK 2.x uses a real STDIO client and the selected LMMS
+to compose, save, replace the in-memory project, reload and render a short score.
+In a separately prepared isolated environment with MCP SDK 2.x, set `LMMS_TEST_STDIO_RENDER=1`
+and `LMMS_TEST_EXECUTABLE=/path/to/lmms`, then run
+`pytest tests/test_stdio_render.py`. Set `LMMS_PLUGIN_DIR` explicitly if needed;
+this test does not require automatic Linux discovery. Optional settings are
+`LMMS_TEST_EXPECTED_VERSION` and `LMMS_TEST_ARTIFACT_DIR` (a new directory).
+
+The fixture explicitly selects LMMS format 1.2. It checks pitches, times and
+velocities through `get_notes`, track settings through `get_project`, and every
+note's key, position, length, volume and pan through independent XML parsing
+before reload and after saving the reloaded state again. Per-note pan is not
+exposed by `get_notes`; the second save checks that reload preserves it.
+`pytest tests/test_stdio_oracle.py` checks that value corruption is
+rejected even when note counts remain unchanged.
+
+Without opt-in the real render test skips. The caller provides isolation and
+resource limits; the test does not download, extract or install LMMS, call a
+model, open the GUI or play audio. WAV duration/energy/clipping checks do not
+establish listening quality, VST support, native Windows/macOS compatibility or
+all Python/MCP SDK versions.
+
 Layout:
 
 | Module | Content |
