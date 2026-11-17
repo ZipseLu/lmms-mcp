@@ -207,6 +207,8 @@ def configured_paths(tmp_path):
 
 @pytest.mark.skipif(os.environ.get("LMMS_TEST_STDIO_RENDER") != "1",
                     reason="Set LMMS_TEST_STDIO_RENDER=1 in a prepared isolated environment")
+@pytest.mark.skipif(version("mcp").split(".", 1)[0] != "2",
+                    reason="Real STDIO fixture requires MCP SDK 2.x; MCP 1.x is not exercised here")
 def test_stdio_roundtrip_and_real_render(tmp_path):
     executable, output = configured_paths(tmp_path)
     output.mkdir(parents=True, exist_ok=False)

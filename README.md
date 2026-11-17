@@ -174,9 +174,9 @@ pytest tests/test_plugin_availability.py
 LMMS_DATA_DIR=/path/to/lmms/data pytest
 ```
 
-An optional integration test uses a real MCP STDIO client and the selected LMMS
+An optional integration test for MCP SDK 2.x uses a real STDIO client and the selected LMMS
 to compose, save, replace the in-memory project, reload and render a short score.
-In a separately prepared isolated environment, set `LMMS_TEST_STDIO_RENDER=1`
+In a separately prepared isolated environment with MCP SDK 2.x, set `LMMS_TEST_STDIO_RENDER=1`
 and `LMMS_TEST_EXECUTABLE=/path/to/lmms`, then run
 `pytest tests/test_stdio_render.py`. Set `LMMS_PLUGIN_DIR` explicitly if needed;
 this test does not require automatic Linux discovery. Optional settings are
