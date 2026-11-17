@@ -1,5 +1,6 @@
 """Plugin discovery fixtures; no native libraries or executables are loaded."""
 
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -88,6 +89,7 @@ def test_other_platforms_keep_their_existing_paths(selected_executable, platform
     assert selected_executable.parent / "plugins" in candidates
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX AppDir symlink fixture")
 def test_apprun_uses_resolved_executable_prefix(selected_executable, monkeypatch):
     launcher = selected_executable.parent.parent.parent / "AppRun"
     launcher.symlink_to(selected_executable)
