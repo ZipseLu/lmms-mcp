@@ -8,6 +8,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import sysconfig
 import wave
 from functools import lru_cache
 from pathlib import Path
@@ -171,6 +172,10 @@ def plugin_dirs() -> tuple[Path, ...]:
             base.parent / "Resources" / "plugins",  # macOS app bundle
             base.parent / "PlugIns",  # some macOS builds
         ]
+        if sys.platform.startswith("linux"):
+            multiarch = sysconfig.get_config_var("MULTIARCH")
+            if multiarch:
+                candidates.append(base.parent / "lib" / multiarch / "lmms")
     candidates += [
         Path("/usr/lib/lmms"),
         Path("/usr/lib64/lmms"),
