@@ -85,6 +85,12 @@ The server reads the plugin libraries of the installed LMMS when it can find the
 
 Set `LMMS_PLUGIN_DIR` when the plugin folder is not in a standard location (for example an AppImage or a custom install). Linux/AppImage discovery remains best-effort.
 
+On Linux, discovery also checks `lib/<MULTIARCH>/lmms` under the resolved
+executable's prefix (for example `/usr/lib/x86_64-linux-gnu/lmms`). The suffix
+comes from Python's host ABI; cross-architecture installations should set
+`LMMS_PLUGIN_DIR`. Existing search locations and explicit-directory precedence
+are preserved.
+
 ## Example
 
 > "Make a 16-bar deep house loop in A minor at 122 BPM and open it in LMMS."
@@ -169,6 +175,9 @@ pytest
 
 # plugin availability regression tests (no LMMS installation required)
 pytest tests/test_plugin_availability.py
+
+# Linux plugin directory regressions (no LMMS installation required)
+pytest tests/test_linux_discovery.py
 
 # include the tests that load every factory preset and round-trip the LMMS demo songs
 LMMS_DATA_DIR=/path/to/lmms/data pytest
